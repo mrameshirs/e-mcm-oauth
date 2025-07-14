@@ -604,7 +604,120 @@ def delete_spreadsheet_rows(sheets_service, spreadsheet_id, sheet_id_gid, row_in
         except Exception as e:
             st.error(f"Unexpected error deleting rows: {e}")
             return False
-    return True# # google_utils.py
+    return True
+def test_permissions_debug(drive_service, sheets_service):
+    """Test function to debug permissions issues"""
+    st.subheader("🔍 Permission Diagnostic Test")
+    
+    if st.button("Run Permission Test"):
+        results = []
+        
+        # Test 1: Basic Drive access
+        try:
+            drive_service.files().list(pageSize=1).execute()
+            results.append("✅ Basic Drive access: OK")
+        except Exception as e:
+            results.append(f"❌ Basic Drive access: {e}")
+        
+        # Test 2: Parent folder access
+        try:
+            folder_info = drive_service.files().get(fileId=PARENT_FOLDER_ID).execute()
+            results.append(f"✅ Parent folder access: OK - {folder_info.get('name')}")
+        except Exception as e:
+            results.append(f"❌ Parent folder access: {e}")
+        
+        # Test 3: Create spreadsheet in root
+        try:
+            test_sheet = sheets_service.spreadsheets().create(
+                body={'properties': {'title': 'TEST_PERMISSIONS_DELETE_ME'}}
+            ).execute()
+            sheet_id = test_sheet.get('spreadsheetId')
+            results.append("✅ Create spreadsheet in root: OK")
+            
+            # Clean up test sheet
+            try:
+                drive_service.files().delete(fileId=sheet_id).execute()
+                results.append("✅ Cleanup test sheet: OK")
+            except:
+                results.append(f"⚠️ Test sheet created but not cleaned up: {sheet_id}")
+                
+        except Exception as e:
+            results.append(f"❌ Create spreadsheet in root: {e}")
+        
+        # Test 4: Create folder in parent
+        try:
+            test_folder = drive_service.files().create(
+                body={
+                    'name': 'TEST_PERMISSIONS_DELETE_ME',
+                    'mimeType': 'application/vnd.google-apps.folder',
+                    'parents': [PARENT_FOLDER_ID]
+                }
+            ).execute()
+            folder_id = test_folder.get('id')
+            results.append("✅ Create folder in parent: OK")
+            
+            # Clean up test folder
+            try:
+                drive_service.files().delete(fileId=folder_id).execute()
+                results.append("✅ Cleanup test folder: OK")
+            except:
+                results.append(f"⚠️ Test folder created but not cleaned up: {folder_id}")
+                
+        except Exception as e:
+            results.append(f"❌ Create folder in parent: {e}")
+        
+        # Display results
+        for result in results:
+            if "✅" in result:
+                st.success(result)
+            elif "❌" in result:
+                st.error(result)
+            else:
+                st.warning(result)
+        
+        # Show service account info if available
+        try:
+            about = drive_service.about().get(fields='user').execute()
+            user_info = about.get('user', {})
+            st.info(f"Service account email: {user_info.get('emailAddress', 'Unknown')}")
+        except:
+            st.warning("Could not retrieve service account email")
+def test_root_spreadsheet_creation(sheets_service, drive_service):
+    """Test creating spreadsheet in root Drive"""
+    st.subheader("🧪 Test Spreadsheet Creation in Root")
+    
+    if st.button("Test Create in Root Drive"):
+        test_title = f"TEST_ROOT_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        with st.spinner("Testing..."):
+            try:
+                # Create without any parent folder
+                spreadsheet_body = {'properties': {'title': test_title}}
+                spreadsheet = sheets_service.spreadsheets().create(
+                    body=spreadsheet_body,
+                    fields='spreadsheetId,spreadsheetUrl'
+                ).execute()
+                
+                spreadsheet_id = spreadsheet.get('spreadsheetId')
+                spreadsheet_url = spreadsheet.get('spreadsheetUrl')
+                
+                if spreadsheet_id:
+                    st.success("✅ SUCCESS! Spreadsheet created in root Drive")
+                    st.info(f"**ID:** {spreadsheet_id}")
+                    st.info(f"**URL:** {spreadsheet_url}")
+                    
+                    # Clean up test file
+                    try:
+                        drive_service.files().delete(fileId=spreadsheet_id).execute()
+                        st.success("✅ Test file cleaned up")
+                    except:
+                        st.warning("⚠️ Test file created but not cleaned up")
+                        st.info("You can manually delete it from your Drive")
+                else:
+                    st.error("❌ No spreadsheet ID returned")
+                    
+            except Exception as e:
+                st.error(f"❌ Test failed: {e}")# # google_utils.py
 # from datetime import datetime 
 # import streamlit as st
 # import os
