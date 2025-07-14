@@ -118,7 +118,14 @@ def get_user_info(drive_service):
         }
     except Exception:
         return None
-        
+
+def logout_google_account():
+    """Logout and clear stored credentials."""
+    if 'google_credentials' in st.session_state:
+        st.session_state.pop('google_credentials')
+    st.success("Successfully logged out from Google account.")
+    st.rerun()
+    
 def find_drive_item_by_name(drive_service, name, mime_type=None, parent_id=None):
     """Finds a file or folder by name in user's Drive."""
     query = f"name = '{name}' and trashed = false"
