@@ -1,14 +1,19 @@
 # config.py - Updated for OAuth2
 import streamlit as st
 
-# --- Google API Configuration ---
+# # --- Google API Configuration ---
+# SCOPES = [
+#     'https://www.googleapis.com/auth/drive',
+#     'https://www.googleapis.com/auth/spreadsheets',
+#     'https://www.googleapis.com/auth/userinfo.profile',
+#     'https://www.googleapis.com/auth/userinfo.email'
+# ]
+# Update your scopes to match what the error shows
 SCOPES = [
-    'https://www.googleapis.com/auth/drive',
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/userinfo.profile',
-    'https://www.googleapis.com/auth/userinfo.email'
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email"
 ]
-
 # --- Google Drive Master Configuration ---
 MASTER_DRIVE_FOLDER_NAME = "e-MCM_Root_DAR_App"  # Master folder in user's Google Drive
 MCM_PERIODS_FILENAME_ON_DRIVE = "mcm_periods_config.json"  # Config file in Google Drive
