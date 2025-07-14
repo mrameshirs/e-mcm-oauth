@@ -118,8 +118,8 @@ def get_user_info(drive_service):
         }
     except Exception:
         return None
-
-def find_drive_item_by_name(drive_service, name, mime_type=None, def find_drive_item_by_name(drive_service, name, mime_type=None, parent_id=None):
+        
+def find_drive_item_by_name(drive_service, name, mime_type=None, parent_id=None):
     """Finds a file or folder by name in user's Drive."""
     query = f"name = '{name}' and trashed = false"
     if mime_type:
