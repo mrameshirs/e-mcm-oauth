@@ -120,12 +120,24 @@ def get_user_info(drive_service):
         return None
 
 def logout_google_account():
-    """Logout and clear stored credentials."""
-    if 'google_credentials' in st.session_state:
-        st.session_state.pop('google_credentials')
-    st.success("Successfully logged out from Google account.")
-    st.rerun()
+    """Clear Google OAuth session data"""
+    import streamlit as st
     
+    # Clear session state variables related to Google auth
+    keys_to_clear = [
+        'google_auth_token',
+        'user_info',
+        'authenticated',
+        'access_token',
+        'refresh_token'
+    ]
+    
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
+    
+    # Force a rerun to update the UI
+    st.rerun()
 def find_drive_item_by_name(drive_service, name, mime_type=None, parent_id=None):
     """Finds a file or folder by name in user's Drive."""
     query = f"name = '{name}' and trashed = false"
