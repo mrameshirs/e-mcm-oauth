@@ -229,7 +229,9 @@ def upload_to_drive(drive_service, file_content_or_path, folder_id, filename_on_
         return None, None
     except Exception as e:
         st.error(f"An unexpected error in upload_to_drive: {e}")
-        return None, Nonedef check_and_migrate_may_data(drive_service, sheets_service):
+        return None, None
+        
+def check_and_migrate_may_data(drive_service, sheets_service):
     """
     Check if the May 2024 spreadsheet exists and create MCM periods config to include it.
     """
