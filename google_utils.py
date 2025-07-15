@@ -25,7 +25,7 @@ from config import (
 def get_google_services():
     """
     Initializes and returns Google Drive and Sheets services using Service Account credentials.
-    This replaces the previous OAuth2 flow.
+    Uses impersonation to act on behalf of a human user to avoid storage quota issues.
     """
     try:
         # Get Service Account credentials from Streamlit secrets
@@ -33,6 +33,18 @@ def get_google_services():
         creds = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=SCOPES
         )
+        
+        # Check if we have an impersonation email configured
+        impersonation_email = st.secrets.get("impersonation_email")
+        if impersonation_email:
+            # Use domain-wide delegation to impersonate a human user
+            # This uses the human user's storage quota instead of service account's
+            creds = creds.with_subject(impersonation_email)
+            st.info(f"🔄 Using impersonation for: {impersonation_email}")
+        else:
+            st.warning("⚠️ No impersonation email configured. Service account storage limits may apply.")
+            st.info("💡 Add 'impersonation_email' to Streamlit secrets to use a human user's storage quota.")
+        
         drive_service = build('drive', 'v3', credentials=creds)
         sheets_service = build('sheets', 'v4', credentials=creds)
         return drive_service, sheets_service
@@ -146,16 +158,12 @@ def initialize_drive_structure(drive_service, sheets_service):
         st.error(f"Could not access Master DAR Spreadsheet (ID: {DAR_MASTER_SPREADSHEET_ID}). Error: {e}")
         return False
 
-    # Find or create the MCM periods config file inside the master folder
+    # Find or create the MCM periods config file in root Drive (not in parent folder)
     if not st.session_state.get('mcm_periods_drive_file_id'):
-        mcm_file_id = find_drive_item_by_name(drive_service, MCM_PERIODS_FILENAME_ON_DRIVE, parent_id=MASTER_APP_FOLDER_ID)
+        # Search in root Drive instead of parent folder to avoid storage quota issues
+        mcm_file_id = find_drive_item_by_name(drive_service, MCM_PERIODS_FILENAME_ON_DRIVE)
         if not mcm_file_id:
-            st.info(f"MCM Periods config file not found. Creating it in the master app folder...")
-            # Use the shared folder approach from version 1
-            if save_mcm_periods(drive_service, {}):  # Create an empty config file
-                st.success("MCM periods config file created successfully.")
-            else:
-                st.error("Failed to create MCM periods config file.")
+            st.info(f"MCM Periods config file not found in root Drive. It will be created when needed.")
         else:
             st.session_state.mcm_periods_drive_file_id = mcm_file_id
 
@@ -411,14 +419,14 @@ def update_spreadsheet_from_df(sheets_service, spreadsheet_id, df_to_write):
         return False
 
 def load_mcm_periods(drive_service):
-    """Loads the MCM periods configuration file from the master app folder."""
+    """Loads the MCM periods configuration file from root Drive (not from parent folder)."""
     mcm_periods_file_id = st.session_state.get('mcm_periods_drive_file_id')
     
     if not mcm_periods_file_id:
-         # Attempt to find it if not in session state
-        file_id = find_drive_item_by_name(drive_service, MCM_PERIODS_FILENAME_ON_DRIVE, parent_id=MASTER_APP_FOLDER_ID)
+         # Search for the file in root Drive (no parent_id specified)
+        file_id = find_drive_item_by_name(drive_service, MCM_PERIODS_FILENAME_ON_DRIVE)
         if not file_id:
-            st.warning("MCM periods config file not found. A new one will be created on save.")
+            st.warning("MCM periods config file not found in root Drive. A new one will be created on save.")
             return {}
         st.session_state.mcm_periods_drive_file_id = file_id
         mcm_periods_file_id = file_id
@@ -453,7 +461,7 @@ def load_mcm_periods(drive_service):
         return {}
 
 def save_mcm_periods(drive_service, periods_data):
-    """Saves the MCM periods configuration file to the master app folder using shared storage."""
+    """Saves the MCM periods configuration file to root Drive (not in parent folder to avoid storage quota)."""
     file_content = json.dumps(periods_data, indent=4).encode('utf-8')
     fh = BytesIO(file_content)
     media_body = MediaIoBaseUpload(fh, mimetype='application/json', resumable=True)
@@ -469,18 +477,20 @@ def save_mcm_periods(drive_service, periods_data):
                 supportsAllDrives=True
             ).execute()
         else:
-            # Create new file in shared folder (uses folder owner's storage, not service account)
-            file_metadata = {'name': MCM_PERIODS_FILENAME_ON_DRIVE, 'parents': [MASTER_APP_FOLDER_ID]}
+            # Create new file in ROOT Drive (no parent specified) to avoid storage quota issues
+            file_metadata = {'name': MCM_PERIODS_FILENAME_ON_DRIVE}
+            # Note: No 'parents' key = file goes to root Drive = no storage quota issue
             new_file = drive_service.files().create(
                 body=file_metadata,
                 media_body=media_body,
                 fields='id',
-                supportsAllDrives=True  # Important for shared folders
+                supportsAllDrives=True
             ).execute()
             file_id = new_file.get('id')
             if file_id:
-                set_public_read_permission(drive_service, file_id)  # Optional: make file publicly readable
+                set_public_read_permission(drive_service, file_id)
                 st.session_state.mcm_periods_drive_file_id = file_id
+                st.success(f"✅ MCM config file '{MCM_PERIODS_FILENAME_ON_DRIVE}' created in root Drive")
         return True
     except HttpError as error:
         st.error(f"Error saving MCM config file: {error}")
