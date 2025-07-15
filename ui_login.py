@@ -1,109 +1,111 @@
-# ui_login.py - Updated with Google OAuth integration
+# app.py
 import streamlit as st
-import os
-import base64
-from config import USER_CREDENTIALS, USER_ROLES, AUDIT_GROUP_NUMBERS
-from google_utils import get_user_info, logout_google_account
+import pandas as pd
 
-def login_page():
-    # Define the CSS style
-    st.markdown("""
-    <style>
-    .page-main-title {
-        font-size: 3rem;
-        font-weight: bold;
-        text-align: center;
+# Set page configuration once at the top
+st.set_page_config(layout="wide", page_title="e-MCM App - GST Audit 1")
+
+# --- Custom Module Imports ---
+from css_styles import load_custom_css
+from google_utils import get_google_services, initialize_drive_structure, log_activity
+from ui_login import login_page
+from ui_pco import pco_dashboard
+from ui_audit_group import audit_group_dashboard
+from ui_smart_audit_tracker import smart_audit_tracker_dashboard, audit_group_tracker_view
+
+# Load custom CSS styles
+load_custom_css()
+
+# --- Session State Initialization ---
+def initialize_session_state():
+    """Initializes all required session state variables."""
+    states = {
+        'logged_in': False,
+        'username': "",
+        'role': "",
+        'audit_group_no': None,
+        'ag_current_extracted_data': [],
+        'ag_pdf_drive_url': None,
+        'ag_validation_errors': [],
+        'ag_editor_data': pd.DataFrame(),
+        'ag_current_mcm_key': None,
+        'ag_current_uploaded_file_name': None,
+        'master_drive_folder_id': None,
+        'mcm_periods_drive_file_id': None,
+        'drive_structure_initialized': False,
+        'login_event_logged': False,
+        'log_sheet_id': None,
+        'app_mode': "e-mcm"  # Default mode: 'e-mcm' or 'smart_audit_tracker'
     }
-    .google-user-info {
-        background-color: #e8f5e9;
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 5px solid #4caf50;
-        margin: 20px 0;
-    }
-    .oauth-info {
-        background-color: #e3f2fd;
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 5px solid #2196f3;
-        margin: 20px 0;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Render the title
-    st.markdown("<div class='page-main-title'>e-MCM App</div>", unsafe_allow_html=True)
-    st.markdown("<h2 class='page-app-subtitle'>GST Audit 1 Commissionerate</h2>", unsafe_allow_html=True)
+    for key, value in states.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
-    def get_image_base64_str(img_path):
-        try:
-            with open(img_path, "rb") as img_file:
-                return base64.b64encode(img_file.read()).decode('utf-8')
-        except FileNotFoundError:
-            st.error(f"Logo image not found at path: {img_path}. Ensure 'logo.png' is present.")
-            return None
-        except Exception as e:
-            st.error(f"Error reading image file {img_path}: {e}")
-            return None
+initialize_session_state()
 
-    image_path = "logo.png"
-    base64_image = get_image_base64_str(image_path)
-    if base64_image:
-        image_type = os.path.splitext(image_path)[1].lower().replace(".", "") or "png"
-        st.markdown(
-            f"<div class='login-header'><img src='data:image/{image_type};base64,{base64_image}' alt='Logo' class='login-logo'></div>",
-            unsafe_allow_html=True)
-    else:
-        st.markdown("<div class='login-header' style='color: red; font-weight: bold;'>[Logo Not Found]</div>",
-                    unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class='app-description'>
-        Welcome! This digital platform streamlines Draft Audit Report (DAR) collection, processing and compilation from Audit Groups for MCM 
-         purpose using AI-powered data extraction.
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Check if Google services are available and show user info
-    if 'google_credentials' in st.session_state and st.session_state.drive_service:
-        user_info = get_user_info(st.session_state.drive_service)
-        if user_info:
-            st.markdown(f"""
-            <div class='google-user-info'>
-                <h4>🔗 Connected Google Account</h4>
-                <p><strong>Name:</strong> {user_info['name']}</p>
-                <p><strong>Email:</strong> {user_info['email']}</p>
-                <p><small>✅ Files will be stored in this Google Drive account</small></p>
-            </div>
-            """, unsafe_allow_html=True)
+# --- Main Application Logic ---
+if not st.session_state.logged_in:
+    login_page()
+else:
+    # --- Service and Structure Initialization (Simplified and Combined) ---
+    # This block runs once after login to ensure everything is ready.
+    if not st.session_state.get('drive_structure_initialized'):
+        with st.spinner("Connecting to Google Services and verifying setup..."):
             
-            # Add logout button for Google account
-            if st.button("🔓 Disconnect Google Account", type="secondary"):
-                logout_google_account()
-    else:
-        st.markdown("""
-        <div class='oauth-info'>
-            <h4>📁 Personal Google Drive Integration</h4>
-            <p>This app stores all files in your personal Google Drive for easy access and management.</p>
-            <p><small>You'll be prompted to authorize Google Drive access after login.</small></p>
-        </div>
-        """, unsafe_allow_html=True)
+            # Step 1: Get Google services using Service Account
+            drive_service, sheets_service = get_google_services()
+            if not drive_service or not sheets_service:
+                st.error("Fatal Error: Could not connect to Google Services. Please check the service account credentials in Streamlit secrets.")
+                st.stop()
+            
+            # Store services in session state for other modules to use
+            st.session_state.drive_service = drive_service
+            st.session_state.sheets_service = sheets_service
 
-    # Regular login form
-    username = st.text_input("Username", key="login_username_styled", placeholder="Enter your username")
-    password = st.text_input("Password", type="password", key="login_password_styled",
-                             placeholder="Enter your password")
+            # Step 2: Verify the Drive/Sheet structure defined in config.py
+            if initialize_drive_structure(drive_service, sheets_service):
+                st.session_state.drive_structure_initialized = True
+                
+                # Step 3: Log the login activity after structure is confirmed
+                if not st.session_state.get('login_event_logged'):
+                    log_sheet_id = st.session_state.get('log_sheet_id')
+                    if log_sheet_id:
+                        log_activity(sheets_service, log_sheet_id, st.session_state.username, st.session_state.role)
+                        st.session_state.login_event_logged = True
+                    else:
+                        st.warning("Could not find log sheet ID. Login activity will not be recorded.")
+                
+                # Rerun to display the main dashboard
+                st.rerun()
+            else:
+                st.error("Fatal Error: Failed to initialize application structure in Google Drive. Application cannot proceed. Please check the folder/sheet IDs in config.py and their sharing permissions with the service account.")
+                st.stop()
 
-    if st.button("Login", key="login_button_styled", use_container_width=True):
-        if username in USER_CREDENTIALS and USER_CREDENTIALS[username] == password:
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.session_state.role = USER_ROLES[username]
-            if st.session_state.role == "AuditGroup":
-                st.session_state.audit_group_no = AUDIT_GROUP_NUMBERS[username]
-            st.success(f"Logged in as {username} ({st.session_state.role})")
-            st.session_state.drive_structure_initialized = False
-            st.session_state.login_event_logged = False
+    # --- View Routing Logic (based on App Mode and Role) ---
+    # This section is only reached after the above initialization is successful.
+    if st.session_state.get('drive_structure_initialized'):
+        drive_service = st.session_state.drive_service
+        sheets_service = st.session_state.sheets_service
+        
+        # Route to the correct dashboard based on the selected app mode and user role
+        if st.session_state.app_mode == "smart_audit_tracker":
+            if st.session_state.role == "PCO":
+                smart_audit_tracker_dashboard(drive_service, sheets_service)
+            elif st.session_state.role == "AuditGroup":
+                audit_group_tracker_view(drive_service, sheets_service)
+        else:  # Default to "e-mcm" mode
+            if st.session_state.role == "PCO":
+                pco_dashboard(drive_service, sheets_service)
+            elif st.session_state.role == "AuditGroup":
+                audit_group_dashboard(drive_service, sheets_service)
+            else:
+                st.error("Unknown user role. Please log in again.")
+                st.session_state.logged_in = False
+                st.rerun()
+
+    # Fallback message if logged in but services failed initialization for any reason
+    elif st.session_state.logged_in:
+        st.warning("Google services are not available. Please check configuration and network. Try logging out and back in.")
+        if st.button("Logout", key="main_logout_gerror"):
+            st.session_state.logged_in = False
             st.rerun()
-        else:
-            st.error("Invalid username or password")
