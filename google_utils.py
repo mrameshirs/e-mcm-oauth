@@ -158,14 +158,15 @@ def initialize_drive_structure(drive_service, sheets_service):
         st.error(f"Could not access Master DAR Spreadsheet (ID: {DAR_MASTER_SPREADSHEET_ID}). Error: {e}")
         return False
 
-    # Find or create the MCM periods config file in root Drive (not in parent folder)
+    # Always look for MCM periods config file in root Drive only (never in parent folders)
     if not st.session_state.get('mcm_periods_drive_file_id'):
-        # Search in root Drive instead of parent folder to avoid storage quota issues
+        # Search ONLY in root Drive (no parent_id specified) to avoid storage quota issues
         mcm_file_id = find_drive_item_by_name(drive_service, MCM_PERIODS_FILENAME_ON_DRIVE)
-        if not mcm_file_id:
-            st.info(f"MCM Periods config file not found in root Drive. It will be created when needed.")
-        else:
+        if mcm_file_id:
             st.session_state.mcm_periods_drive_file_id = mcm_file_id
+            st.info(f"📄 Found existing MCM config file in root Drive")
+        else:
+            st.info(f"📄 MCM config file will be created in root Drive when first period is added")
 
     st.success("Application setup verified successfully.")
     return True
@@ -418,6 +419,19 @@ def update_spreadsheet_from_df(sheets_service, spreadsheet_id, df_to_write):
         st.error(f"An unexpected error occurred while updating the Spreadsheet: {e}")
         return False
 
+def reset_mcm_file_to_root(drive_service):
+    """Helper function to reset MCM file reference and ensure it uses root Drive only."""
+    st.session_state.mcm_periods_drive_file_id = None
+    # Search for MCM file in root Drive only
+    mcm_file_id = find_drive_item_by_name(drive_service, MCM_PERIODS_FILENAME_ON_DRIVE)
+    if mcm_file_id:
+        st.session_state.mcm_periods_drive_file_id = mcm_file_id
+        st.success("✅ MCM file reference reset to use root Drive")
+        return True
+    else:
+        st.info("📄 No MCM file found in root Drive. A new one will be created.")
+        return False
+
 def load_mcm_periods(drive_service):
     """Loads the MCM periods configuration file from root Drive (not from parent folder)."""
     mcm_periods_file_id = st.session_state.get('mcm_periods_drive_file_id')
@@ -461,7 +475,7 @@ def load_mcm_periods(drive_service):
         return {}
 
 def save_mcm_periods(drive_service, periods_data):
-    """Saves the MCM periods configuration file to root Drive (not in parent folder to avoid storage quota)."""
+    """Saves the MCM periods configuration file to root Drive (always outside parent folder)."""
     file_content = json.dumps(periods_data, indent=4).encode('utf-8')
     fh = BytesIO(file_content)
     media_body = MediaIoBaseUpload(fh, mimetype='application/json', resumable=True)
@@ -470,27 +484,18 @@ def save_mcm_periods(drive_service, periods_data):
 
     try:
         if mcm_periods_file_id:
-            # Try to update existing file
-            try:
-                drive_service.files().update(
-                    fileId=mcm_periods_file_id,
-                    media_body=media_body,
-                    supportsAllDrives=True
-                ).execute()
-                return True
-            except HttpError as update_error:
-                if "storageQuotaExceeded" in str(update_error) or "Service Accounts do not have storage quota" in str(update_error):
-                    # The existing file is in a parent folder causing quota issues
-                    # Create a new file in root instead
-                    st.warning("⚠️ Existing MCM file has storage quota issues. Creating new file in root Drive...")
-                    st.session_state.mcm_periods_drive_file_id = None  # Reset to create new file
-                else:
-                    raise update_error  # Re-raise if it's a different error
-        
-        # Create new file in ROOT Drive (no parent specified) to avoid storage quota issues
-        if not st.session_state.get('mcm_periods_drive_file_id'):
+            # Update existing file (which should be in root Drive)
+            drive_service.files().update(
+                fileId=mcm_periods_file_id,
+                media_body=media_body,
+                supportsAllDrives=True
+            ).execute()
+            st.success(f"✅ MCM config updated successfully")
+            return True
+        else:
+            # Create new file in ROOT Drive (never in parent folder)
             file_metadata = {'name': MCM_PERIODS_FILENAME_ON_DRIVE}
-            # Note: No 'parents' key = file goes to root Drive = no storage quota issue
+            # Note: No 'parents' key = file always goes to root Drive
             new_file = drive_service.files().create(
                 body=file_metadata,
                 media_body=media_body,
@@ -508,16 +513,8 @@ def save_mcm_periods(drive_service, periods_data):
                 return False
                 
     except HttpError as error:
-        if "storageQuotaExceeded" in str(error) or "Service Accounts do not have storage quota" in str(error):
-            st.error("❌ Service Account Storage Quota Exceeded")
-            st.error("🔧 **Solution:** The app will create a new MCM config file in root Drive.")
-            st.info("💡 Your existing MCM data will be preserved in the new file.")
-            # Reset the file ID so a new file gets created in root
-            st.session_state.mcm_periods_drive_file_id = None
-            return False
-        else:
-            st.error(f"Error saving MCM config file: {error}")
-            return False
+        st.error(f"Error saving MCM config file: {error}")
+        return False
     except Exception as e:
         st.error(f"Unexpected error saving MCM config file: {e}")
         return False
