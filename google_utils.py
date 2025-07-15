@@ -412,15 +412,22 @@ def update_spreadsheet_from_df(sheets_service, spreadsheet_id, df_to_write):
 
 def load_mcm_periods(drive_service):
     """Loads the MCM periods configuration file from the master app folder."""
-    if 'mcm_periods_drive_file_id' not in st.session_state:
+    mcm_periods_file_id = st.session_state.get('mcm_periods_drive_file_id')
+    
+    if not mcm_periods_file_id:
          # Attempt to find it if not in session state
         file_id = find_drive_item_by_name(drive_service, MCM_PERIODS_FILENAME_ON_DRIVE, parent_id=MASTER_APP_FOLDER_ID)
         if not file_id:
             st.warning("MCM periods config file not found. A new one will be created on save.")
             return {}
         st.session_state.mcm_periods_drive_file_id = file_id
+        mcm_periods_file_id = file_id
 
-    mcm_periods_file_id = st.session_state.mcm_periods_drive_file_id
+    # Double-check that we have a valid file ID before proceeding
+    if not mcm_periods_file_id:
+        st.warning("MCM periods file ID is not available. Returning empty config.")
+        return {}
+
     try:
         request = drive_service.files().get_media(fileId=mcm_periods_file_id)
         fh = BytesIO()
@@ -431,12 +438,19 @@ def load_mcm_periods(drive_service):
         fh.seek(0)
         return json.load(fh)
     except HttpError as error:
-        st.error(f"Error loading MCM config: {error}")
+        if error.resp.status == 404:
+            # File was deleted or moved, reset the session state
+            st.session_state.mcm_periods_drive_file_id = None
+            st.warning("MCM periods config file not found. It may have been deleted.")
+        else:
+            st.error(f"Error loading MCM config: {error}")
         return {}
     except json.JSONDecodeError:
         st.error("MCM config file is corrupted. Returning empty config.")
         return {}
-    return {}
+    except Exception as e:
+        st.error(f"Unexpected error loading MCM config: {e}")
+        return {}
 
 def save_mcm_periods(drive_service, periods_data):
     """Saves the MCM periods configuration file to the master app folder using shared storage."""
