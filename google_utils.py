@@ -470,14 +470,25 @@ def save_mcm_periods(drive_service, periods_data):
 
     try:
         if mcm_periods_file_id:
-            # Update existing file
-            drive_service.files().update(
-                fileId=mcm_periods_file_id,
-                media_body=media_body,
-                supportsAllDrives=True
-            ).execute()
-        else:
-            # Create new file in ROOT Drive (no parent specified) to avoid storage quota issues
+            # Try to update existing file
+            try:
+                drive_service.files().update(
+                    fileId=mcm_periods_file_id,
+                    media_body=media_body,
+                    supportsAllDrives=True
+                ).execute()
+                return True
+            except HttpError as update_error:
+                if "storageQuotaExceeded" in str(update_error) or "Service Accounts do not have storage quota" in str(update_error):
+                    # The existing file is in a parent folder causing quota issues
+                    # Create a new file in root instead
+                    st.warning("⚠️ Existing MCM file has storage quota issues. Creating new file in root Drive...")
+                    st.session_state.mcm_periods_drive_file_id = None  # Reset to create new file
+                else:
+                    raise update_error  # Re-raise if it's a different error
+        
+        # Create new file in ROOT Drive (no parent specified) to avoid storage quota issues
+        if not st.session_state.get('mcm_periods_drive_file_id'):
             file_metadata = {'name': MCM_PERIODS_FILENAME_ON_DRIVE}
             # Note: No 'parents' key = file goes to root Drive = no storage quota issue
             new_file = drive_service.files().create(
@@ -491,10 +502,22 @@ def save_mcm_periods(drive_service, periods_data):
                 set_public_read_permission(drive_service, file_id)
                 st.session_state.mcm_periods_drive_file_id = file_id
                 st.success(f"✅ MCM config file '{MCM_PERIODS_FILENAME_ON_DRIVE}' created in root Drive")
-        return True
+                return True
+            else:
+                st.error("Failed to create MCM config file")
+                return False
+                
     except HttpError as error:
-        st.error(f"Error saving MCM config file: {error}")
-        return False
+        if "storageQuotaExceeded" in str(error) or "Service Accounts do not have storage quota" in str(error):
+            st.error("❌ Service Account Storage Quota Exceeded")
+            st.error("🔧 **Solution:** The app will create a new MCM config file in root Drive.")
+            st.info("💡 Your existing MCM data will be preserved in the new file.")
+            # Reset the file ID so a new file gets created in root
+            st.session_state.mcm_periods_drive_file_id = None
+            return False
+        else:
+            st.error(f"Error saving MCM config file: {error}")
+            return False
     except Exception as e:
         st.error(f"Unexpected error saving MCM config file: {e}")
         return False
