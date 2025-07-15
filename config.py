@@ -1,31 +1,35 @@
-# config.py - Updated for OAuth2
+# config.py
 import streamlit as st
 
-# # --- Google API Configuration ---
-# In config.py
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/userinfo.profile", 
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/drive"
-]
-# Update your scopes to match what the error shows
-# SCOPES = [
-#     "https://www.googleapis.com/auth/userinfo.profile",
-#     "openid",
-#     "https://www.googleapis.com/auth/userinfo.email"
-# ]
+# --- Google API Configuration ---
+SCOPES = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+
 # --- Google Drive Master Configuration ---
-MASTER_DRIVE_FOLDER_NAME = "e-MCM_Root_DAR_App"  # Master folder in user's Google Drive
-MCM_PERIODS_FILENAME_ON_DRIVE = "mcm_periods_config.json"  # Config file in Google Drive
-LOG_SHEET_FILENAME_ON_DRIVE = "e-MCM_App_Activity_Log" 
-SMART_AUDIT_MASTER_DB_SHEET_NAME = "smart_audit_master_db" # Master DB sheet
+# Instructions for the App Administrator (PCO):
+# 1. In your personal Google Drive, create a main folder for the app, e.g., "e-MCM App Files".
+# 2. Inside that folder, create another folder named "All DAR Uploads".
+# 3. Create a new Google Sheet named "Master DAR Database".
+# 4. Share BOTH the "All DAR Uploads" folder AND the "Master DAR Database" sheet with your service account's email address, granting it "Editor" permissions.
+# 5. Paste the ID of the "All DAR Uploads" folder and the "Master DAR Database" sheet below.
 
-# Remove shared drive and parent folder references since we're using personal account
-PARENT_FOLDER_ID = None  # Not needed for personal account
-SHARED_DRIVE_ID = None   # Not using shared drive
+# The folder where all monthly sub-folders and config files will be stored.
+# Get this from the URL of the folder in your personal Google Drive.
+MASTER_APP_FOLDER_ID = "1g1dgq5Ci_tPaqq1q2XuI7hMjiuQxDjFc" 
 
-# --- User Credentials (keep existing) ---
+# The single folder where all DAR PDFs from all groups and months will be uploaded.
+# This folder should be INSIDE your MASTER_APP_FOLDER_ID.
+DAR_UPLOADS_FOLDER_ID = "1wptb8HtZAeFFBOJPSAJJEDvTTsQiwN2c"
+
+# The single spreadsheet that will store all extracted data from all DARs.
+DAR_MASTER_SPREADSHEET_ID = "1zpkKj5hmprxpXxHuj_68hOVdBg24IwF6tFIizGU-wec"
+
+# --- Internal Configuration Files (will be stored in MASTER_APP_FOLDER_ID) ---
+MCM_PERIODS_FILENAME_ON_DRIVE = "mcm_periods_config.json"
+LOG_SHEET_FILENAME_ON_DRIVE = "e-MCM_App_Activity_Log"
+SMART_AUDIT_MASTER_DB_SHEET_NAME = "smart_audit_master_db"
+
+
+# --- User Credentials (No changes here) ---
 USER_CREDENTIALS = {
     "planning_officer": "pco_password",
     **{f"audit_group{i}": f"ag{i}_audit" for i in range(1, 31)}
